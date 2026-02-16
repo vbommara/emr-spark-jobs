@@ -1,0 +1,87 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'EMR Customer Analytics Job Deployment Tracker'
+
+Parameters:
+  DeploymentVersion:
+    Type: String
+    Description: Git commit hash of the deployed version
+    Default: 'initial'
+  
+  DeploymentTimestamp:
+    Type: String
+    Description: Timestamp of deployment
+    Default: '20260216-000000'
+  
+  ScriptPath:
+    Type: String
+    Description: S3 path to the deployed PySpark script
+    Default: 's3://emr-demo-841306720465/scripts/customer_analytics_initial.py'
+  
+  CommitAuthor:
+    Type: String
+    Description: Author of the commit
+    Default: 'Unknown'
+  
+  CommitMessage:
+    Type: String
+    Description: Commit message
+    Default: 'Initial deployment'
+  
+  JobRunId:
+    Type: String
+    Description: EMR on EKS job run ID
+    Default: 'none'
+
+Resources:
+  DeploymentMetadataParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: /emr/customer-analytics/deployment-metadata
+      Type: String
+      Value: !Sub |
+        {
+          "version": "${DeploymentVersion}",
+          "timestamp": "${DeploymentTimestamp}",
+          "scriptPath": "${ScriptPath}",
+          "commitAuthor": "${CommitAuthor}",
+          "commitMessage": "${CommitMessage}",
+          "jobRunId": "${JobRunId}"
+        }
+      Description: Latest deployment metadata for Customer Analytics job
+
+Outputs:
+  DeploymentVersion:
+    Description: Deployed version (commit hash)
+    Value: !Ref DeploymentVersion
+    Export:
+      Name: !Sub '${AWS::StackName}-Version'
+  
+  DeploymentTimestamp:
+    Description: Deployment timestamp
+    Value: !Ref DeploymentTimestamp
+    Export:
+      Name: !Sub '${AWS::StackName}-Timestamp'
+  
+  ScriptPath:
+    Description: S3 path to deployed script
+    Value: !Ref ScriptPath
+    Export:
+      Name: !Sub '${AWS::StackName}-ScriptPath'
+  
+  CommitAuthor:
+    Description: Commit author
+    Value: !Ref CommitAuthor
+    Export:
+      Name: !Sub '${AWS::StackName}-CommitAuthor'
+  
+  CommitMessage:
+    Description: Commit message
+    Value: !Ref CommitMessage
+    Export:
+      Name: !Sub '${AWS::StackName}-CommitMessage'
+  
+  JobRunId:
+    Description: Latest EMR job run ID
+    Value: !Ref JobRunId
+    Export:
+      Name: !Sub '${AWS::StackName}-JobRunId'

@@ -1,0 +1,20 @@
+# EMR on EKS Job Configuration
+# This file defines the Spark job parameters
+
+jobName: customer-analytics-production
+virtualClusterId: zjvo6fcbjmep12ajvzcw48wn4
+executionRoleArn: arn:aws:iam::841306720465:role/EMRJobExecutionRole
+
+sparkSubmitParameters:
+  entryPoint: s3://emr-demo-841306720465/scripts/customer_analytics.py
+  entryPointArguments:
+    - s3://emr-demo-841306720465/data/customer_transactions.csv
+    - s3://emr-demo-841306720465/output/customer_analytics/
+  sparkSubmitOptions: >-
+    --conf spark.executor.instances=2
+    --conf spark.executor.memory=2G
+    --conf spark.executor.cores=2
+    --conf spark.driver.memory=2G
+    --conf spark.driver.cores=1
+
+releaseLabel: emr-7.0.0-latest

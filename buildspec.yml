@@ -1,0 +1,98 @@
+version: 0.2
+
+phases:
+  install:
+    runtime-versions:
+      python: 3.11
+    commands:
+      - echo "Installing dependencies..."
+      - pip install pyyaml boto3
+  
+  pre_build:
+    commands:
+      - echo "Build started on `date`"
+      - export COMMIT_HASH=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-7)
+      - export COMMIT_MESSAGE=$(git log -1 --pretty=%B)
+      - export COMMIT_AUTHOR=$(git log -1 --pretty=%an)
+      - export TIMESTAMP=$(date -u +%Y%m%d-%H%M%S)
+      - echo "Commit hash - $COMMIT_HASH"
+      - echo "Commit message - $COMMIT_MESSAGE"
+      - echo "Commit author - $COMMIT_AUTHOR"
+  
+  build:
+    commands:
+      - echo "Uploading PySpark script to S3 with version..."
+      - aws s3 cp scripts/customer_analytics.py s3://emr-demo-841306720465/scripts/customer_analytics_${COMMIT_HASH}.py
+      - aws s3 cp scripts/customer_analytics.py s3://emr-demo-841306720465/scripts/customer_analytics_latest.py
+      
+      - echo "Updating CloudFormation stack with deployment metadata..."
+      - |
+        aws cloudformation deploy \
+          --template-file cloudformation/emr-job-deployment.yaml \
+          --stack-name emr-customer-analytics-deployment \
+          --parameter-overrides \
+            DeploymentVersion=$COMMIT_HASH \
+            DeploymentTimestamp=$TIMESTAMP \
+            ScriptPath=s3://emr-demo-841306720465/scripts/customer_analytics_${COMMIT_HASH}.py \
+            CommitAuthor="$COMMIT_AUTHOR" \
+            CommitMessage="$COMMIT_MESSAGE" \
+          --capabilities CAPABILITY_IAM \
+          --region us-east-1
+      
+      - echo "Submitting EMR on EKS job..."
+      - |
+        JOB_RUN_ID=$(aws emr-containers start-job-run \
+          --virtual-cluster-id zjvo6fcbjmep12ajvzcw48wn4 \
+          --name customer-analytics-${COMMIT_HASH}-${TIMESTAMP} \
+          --execution-role-arn arn:aws:iam::841306720465:role/EMRJobExecutionRole \
+          --release-label emr-7.0.0-latest \
+          --job-driver '{
+            "sparkSubmitJobDriver": {
+              "entryPoint": "s3://emr-demo-841306720465/scripts/customer_analytics_'${COMMIT_HASH}'.py",
+              "entryPointArguments": [
+                "s3://emr-demo-841306720465/data/customer_transactions.csv",
+                "s3://emr-demo-841306720465/output/customer_analytics_'${TIMESTAMP}'/"
+              ],
+              "sparkSubmitParameters": "--conf spark.executor.instances=2 --conf spark.executor.memory=2G --conf spark.executor.cores=2 --conf spark.driver.memory=2G --conf spark.driver.cores=1"
+            }
+          }' \
+          --configuration-overrides '{
+            "monitoringConfiguration": {
+              "cloudWatchMonitoringConfiguration": {
+                "logGroupName": "/aws/emr-containers/jobs",
+                "logStreamNamePrefix": "customer-analytics"
+              },
+              "s3MonitoringConfiguration": {
+                "logUri": "s3://emr-demo-841306720465/logs/"
+              }
+            }
+          }' \
+          --region us-east-1 \
+          --query 'id' \
+          --output text)
+      
+      - echo "EMR Job Run ID - $JOB_RUN_ID"
+      - echo "Updating CloudFormation stack with job run ID..."
+      - |
+        aws cloudformation update-stack \
+          --stack-name emr-customer-analytics-deployment \
+          --use-previous-template \
+          --parameters \
+            ParameterKey=DeploymentVersion,ParameterValue=$COMMIT_HASH \
+            ParameterKey=DeploymentTimestamp,ParameterValue=$TIMESTAMP \
+            ParameterKey=ScriptPath,ParameterValue=s3://emr-demo-841306720465/scripts/customer_analytics_${COMMIT_HASH}.py \
+            ParameterKey=CommitAuthor,ParameterValue="$COMMIT_AUTHOR" \
+            ParameterKey=CommitMessage,ParameterValue="$COMMIT_MESSAGE" \
+            ParameterKey=JobRunId,ParameterValue=$JOB_RUN_ID \
+          --capabilities CAPABILITY_IAM \
+          --region us-east-1 || echo "Stack update not needed"
+
+  post_build:
+    commands:
+      - echo "Build completed on `date`"
+      - echo "Deployment version - $COMMIT_HASH"
+      - echo "Job Run ID - $JOB_RUN_ID"
+
+artifacts:
+  files:
+    - '**/*'
