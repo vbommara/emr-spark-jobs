@@ -1,15 +1,9 @@
 #!/usr/bin/env python3
 """
-Customer Analytics ETL - Production Version 1.1
+Customer Analytics ETL - Production Version 1.0
 Processes daily customer transaction data and generates insights
-
-CHANGELOG v1.1 (2026-02-16):
-- Added product category analysis for better insights
-- Improved customer segmentation logic
-- Performance: Optimized aggregation queries
-
 Author: Data Engineering Team
-Last Updated: 2026-02-16
+Last Updated: 2026-02-03
 """
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, sum as _sum, count, avg, max as _max, min as _min
@@ -24,11 +18,11 @@ def main():
     output_path = sys.argv[2]
     
     spark = SparkSession.builder \
-        .appName("CustomerAnalytics-v1.1") \
+        .appName("CustomerAnalytics-v1.0") \
         .getOrCreate()
     
     print("=" * 60)
-    print("Customer Analytics ETL - Version 1.1")
+    print("Customer Analytics ETL - Version 1.0")
     print("=" * 60)
     
     # Read customer transaction data
@@ -38,26 +32,18 @@ def main():
     print(f"Total transactions loaded: {transactions.count()}")
     transactions.printSchema()
     
-    # NEW FEATURE: Add product category analysis
-    print("\nAnalyzing product categories...")
-    product_analysis = transactions.select("customer_id", "product_id", "amount")
-    customer_base = transactions.select("customer_id", "date").distinct()
-    
-    # Enrich data with customer purchase dates
-    enriched_data = product_analysis.crossJoin(customer_base)
-    
-    # Calculate customer metrics with enriched data
+    # Calculate customer metrics
     print("\nCalculating customer metrics...")
-    customer_metrics = enriched_data.groupBy("customer_id").agg(
+    customer_metrics = transactions.groupBy("customer_id").agg(
         _sum("amount").alias("total_spent"),
-        count("product_id").alias("order_count"),
+        count("order_id").alias("order_count"),
         avg("amount").alias("avg_order_value"),
         _max("amount").alias("max_order"),
         _min("amount").alias("min_order")
     )
     
-    # Calculate customer segments (IMPROVED logic)
-    print("Segmenting customers with improved logic...")
+    # Calculate customer segments
+    print("Segmenting customers...")
     from pyspark.sql.functions import when
     
     segmented_customers = customer_metrics.withColumn(
